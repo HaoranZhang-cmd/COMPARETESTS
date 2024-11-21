@@ -1,0 +1,365 @@
+---
+title: "hw2"
+author: "Haoran Zhang"
+date: "2024-03-25"
+output: html_document
+---
+## **Problem 1**
+1.We write $Y=X\beta+\epsilon$,where $\epsilon ～ \mathcal{N}(0,\sigma^2)$.Since $Y=X\beta+\epsilon$,$\beta=(X^{T}X)^{-1}X^{T}(Y-\epsilon)$.Therefore,$\beta |y,\sigma^2 ～ \mathcal{N}((X^{T}X)^{-1}X^{T}y,\sigma^2(X^{T}X)^{-1})$
+
+2.let$ESS=||Y-\hat{Y}||_2^{2}=||Y-X\hat{\beta}||_2^{2}$,then $\frac{ESS}{\sigma^2} ～\mathcal{X}^2(n-p),\frac{\sigma^2}{ESS} ～Inv-\mathcal{X}^2(n-p)$.Therefore,$\sigma^2 ～Inv-\mathcal{X}^2(n-p,ESS)$,and $\sigma^2|y ～Inv-\mathcal{X}^2(n-p,s^2)$, where
+$s^2=||y-X\hat{\beta}||_2^{2}$.
+
+## **Problem 2**
+1.Let $y=(y_1,y_2,...,y_{10})^T$,then $p(\alpha,\beta|y)=\frac{p(y|\alpha,\beta)p(\alpha,\beta)}{\int \int p(y|\alpha,\beta)p(\alpha,\beta)d\alpha d\beta}=\frac{p(y|\alpha,\beta)}{\int \int p(y|\alpha,\beta)d\alpha d\beta}=\frac{\prod_{i=1}^{10}\frac{{(\alpha+\beta X_i)}^{y_i}}{y_i!}e^{-(\alpha+\beta X_i)}}{\int \int \prod_{i=1}^{10}\frac{{(\alpha+\beta X_i)}^{y_i}}{y_i!}e^{-(\alpha+\beta X_i)}d\alpha d\beta}=\frac{\prod_{i=1}^{10}(\alpha+\beta X_i)^{y_i}e^{-(\alpha+\beta X_i)}}{\int \int \prod_{i=1}^{10}(\alpha+\beta X_i)^{y_i}e^{-(\alpha +\beta X_i)}d\alpha d\beta}$ 
+
+The posterior means of $\alpha,\beta$ are $\int \alpha(\int p(\alpha,\beta|y)d\beta)d\alpha$ and $\int \beta(\int p(\alpha,\beta|y)d\alpha)d\beta$,respectively.Therefore,
+
+$E(\alpha|y)=\frac{\int \int \alpha \prod_{i=1}^{10}(\alpha+\beta X_i)^{y_i}e^{-(\alpha +\beta X_i)}d\alpha d\beta}{\int \int \prod_{i=1}^{10}(\alpha+\beta X_i)^{y_i}e^{-(\alpha +\beta X_i)}d\alpha d\beta}$
+
+$E(\beta|y)=\frac{\int \int \beta \prod_{i=1}^{10}(\alpha+\beta X_i)^{y_i}e^{-(\alpha +\beta X_i)}d\alpha d\beta}{\int \int \prod_{i=1}^{10}(\alpha+\beta X_i)^{y_i}e^{-(\alpha +\beta X_i)}d\alpha d\beta}$
+
+
+The integrate region $(\alpha,\beta)$ can be constructed as follows:
+
+$\alpha+\beta X_i\geq 0$ for every $i=1,2,...,10$,and $\alpha +\beta X_i \leq 200$ for every $i=1,2,...,10$,because $max(y_1,...,y_{10})=31$.When $\alpha +\beta X_i \geq 200$, $(\alpha+\beta X_i)^{y_i}e^{-(\alpha+\beta X_i)}$ is sufficiently small for $i=1,2,...,10$ and almost makes no contribution to the value of integration.
+
+By calculation,$(X_1,...,X_{10})=(3863,4300,5027,5481,5814,6033,5877,6223,7433,7107)$.It is reasonable to assume that $\beta \geq 0$.Therefore,$\alpha+3866\beta \geq 0,\alpha+7433\beta \leq 200.$Let $\beta=0.001,0.002,...,0.056$,and $\alpha=-3866\beta,-3866\beta+0.001,...,200-7433\beta$,calculating the sums as follows:
+```{r integration}
+X<-c(3863,4300,5027,5481,5814,6033,5877,6223,7433,7107)
+Y<-c(24,25,31,31,22,21,26,20,16,22)
+beta<-seq(0,0.056,by=0.002)
+int<-0
+int_alpha<-0
+int_beta<-0
+for(i in 1:length(beta)){
+  alpha<-seq(-3866*beta[i],200-7433*beta[i],by=0.01)
+  for(k in 1:length(alpha)){
+      for(j in 1:10){
+      tmp<-(alpha[k]+beta[i]*X[j])^{Y[j]}*exp(-(alpha[k]+beta[i]*X[j])^{Y[j]})
+      int<-int+tmp
+      int_alpha<-int_alpha+tmp*alpha[k]
+      int_beta<-int_beta+tmp*beta[i]
+      }
+  }
+}
+print(int_alpha/int)
+print(int_beta/int)
+```
+We find that the posterior means of $\alpha,\beta$ are $-75.32584,0.01974746$,respectively.
+
+2.$lnp_{\theta}(y)=\sum_{i=1}^{10}y_iln(\alpha+\beta x_i)+C$.We get $\frac{\partial lnp_{\theta}(y)}{\partial \alpha}=\sum_{i=1}^{10}\frac{y_i}{\alpha+\beta x_i}=0$,$\frac{\partial lnp_{\theta}(x)}{\partial \beta}=\sum_{i=1}^{10}\frac{x_iy_i}{\alpha+\beta x_i}=0$.
+We solve this equation:
+```{r MLE}
+library(DEoptim)
+
+x <- c(3863, 4300, 5027, 5481, 5814, 6033, 5877, 6223, 7433, 7107)
+y <- c(24, 25, 31, 31, 22, 21, 26, 20, 16, 22)
+
+objective <- function(params) {
+  alpha <- params[1]
+  beta <- params[2]
+  result1 <- 0
+  result2 <- 0
+  for (i in 1:10) {
+    result1 <- result1 + y[i] / (alpha + beta * x[i]) - 1
+    result2 <- result2 + x[i] * y[i] / (alpha + beta * x[i]) - x[i]
+  }
+  return(result1^2 + result2^2)
+}
+
+#为减少误差，取20次估计的平均值
+mymatrix<-matrix(NA,nrow=20,ncol=2)
+for(i in 1:20){
+  result<-(DEoptim(objective, lower = c(-100,0),upper = c(-50,0.1), control = list(trace = FALSE,itermax=1000)))
+  mymatrix[i,1]<-(result$optim$bestmem[1])
+  mymatrix[i,2]<-(result$optim$bestmem[2])
+}
+print(mean(mymatrix[,1]))
+print(mean(mymatrix[,2]))
+```
+We get maximum likelihood estimation for$\alpha,\beta$:$\hat{\alpha}=-78.34628,\hat{\beta}=0.01846536.$
+
+$\frac{\partial^2 lnp_{\theta}(y)}{\partial \alpha^2}=-\sum_{i=1}^{10}\frac{y_i}{(\alpha+\beta x_i)^2},\frac{\partial^2 lnp_{\theta}(y)}{\partial \beta^2}=-\sum_{i=1}^{10}\frac{x_i^2 y_i}{(\alpha+\beta x_i)^2},\frac{\partial^2 lnp_{\theta}(y)}{\partial \alpha \partial \beta}=-\sum_{i=1}^{10}\frac{x_iy_i}{(\alpha+\beta x_i)^2}$.
+
+Let ${\alpha}=-78.34628,{\beta}=0.01846536$,the observed fisher information matrix is 
+\(
+\begin{pmatrix}
+0.48142 & 2064.7 \\
+2064.7 & 8920555.8
+\end{pmatrix}
+\)
+and its inverse is 
+\(
+\begin{pmatrix}
+282.762 & -0.0654 \\
+-0.0654 & 0.0000153
+\end{pmatrix}
+\)
+So we can assume that the posterior distribution of $\alpha,\beta$ are $\mathcal{N}(-78.34628,282.762),\mathcal{N}(0.01846536,0.0000153)$,and the $95$ percent confidence interval is $(-111.304,-32.95771),(0.0108,0.0261)$.
+
+Since in (1) We estimate posterior means as $-75.32584,0.01974746$,they all lies in the 95% confidence intervals.
+
+## **Problem 3**
+(1)$p(z|\mu)=p(z_1|\mu)p(z_2|z_1,\mu)...p(z_n|z_{n-1},...,z_1,\mu)=\prod_{i=1}^{N}p(z_i|\mu_i)$
+
+Therefore,$p(\mu|z) \propto e^{-\frac{\sum_{i=1}^{N}\mu_i^2}{2A}-\sum_{i=1}^{N}\frac{(z_i-\mu_i)^2}{2}}$.So $p(\mu_i|z)\propto e^{-\frac{\mu_i^2}{2A}-\frac{(\mu_i-z_i)^2}{2}}$,and $\mu_i|z～\mathcal{N}(\frac{A}{A+1}z_i,\frac{A}{A+1})$.When using the square error lost,the Bayes estimator is equal to the posterior mean,so $\hat{\mu}^{Bayes}=\frac{A}{A+1}z$.
+
+$p(\mu|z) \propto e^{-\frac{\sum_{i=1}^{N}\mu_i^2}{2A}-\sum_{i=1}^{N}\frac{(z_i-\mu_i)^2}{2}}$.Maximize the posterior distribution,we find that $\hat{\mu}^{MLE}=\hat{\mu}^{Bayes}=\frac{A}{A+1}z$.
+
+(2)If we use squared loss function.$r(\hat{\mu^{Bayes}}|z)=E((\mu-\hat{\mu^{Bayes}})^2|z)=Var(\mu|z)=\frac{AN}{A+1}$.Therefore,the integrated risk is $\int r(\hat{\mu^{Bayes}}|z)p(z)dz=\frac{AN}{A+1}$.the integrated risk for $\hat{\mu^{Bayes}}$ is also $\frac{AN}{A+1}$.
+
+(3)
+``` {r estimation of frequentist risk}
+risk<-function(N,A){
+  mu<-rnorm(N,mean=0,sd=sqrt(A))
+  expectation_JS<-rep(0,N)
+  expectation_MLE<-rep(0,N)
+  for(j in 1:N){
+    z<-rep(0,N)
+    for(i in 1:N){
+      z[i]<-rnorm(1,mean=mu[i],sd=1)
+    }
+    S<-sum(z^2)
+    mu_JS<-(1-(N-2)/S)*z
+    mu_MLE<-A/(A+1)*z
+    expectation_JS[j]<-sum((mu_JS-mu)^2)
+    expectation_MLE[j]<-sum((mu_MLE-mu)^2)
+  }
+  print(c("risk of JS estimator is",mean(expectation_JS)))
+  print(c("risk of MLE estimator is",mean(expectation_MLE)))
+}
+```
+In an experiment,we get the following estimators:
+```{r}
+data <- data.frame(matrix(c(91.615,90.815,255.026,253.768,507.957,506.922,183.899,183.728,454.333,454.040,908.244,907.915,197.292,197.261,492.970,492.931,988.370,988.333),nrow=2,ncol=9))
+
+colnames(data)<-c("N=200,A=1","N=500,A=1","N=1000,A=1","N=200,A=10","N=500,A=10","N=1000,A=10","N=200,A=100","N=500,A=100","N=1000,A=100")
+rownames(data)<-c("risk of JS","risk of MLE")
+
+knitr::kable(data)
+```
+We have the following findings:
+
+1.The risk of James-Stein estimator is always slightly higher than MLE estimator.
+
+2.There is no significant overall change of the difference of the risk of James-Stein estimator and MLE estimator as N increases.
+
+3.However,as A increases,the difference becomes smaller.
+
+
+## **Problem 4**
+(1)$p(X_t|X_{t-1},Y_t) \propto p(X_{t-1},Y_t|X_t)p(X_t)$.Since $X_t=\rho X_{t-1}+\xi_t$,we have $E(X_t)=\rho E(X_{t-1}),Var(X_t)=\rho^2 Var(X_{t-1})+1$.Also,$E(X_0)=0,Var(X_0)=\frac{1 }{1-\rho^2}$.Then $E(X_t)=0,Var(X_t)=\frac{1}{1-\rho^2}$.Therefore,$X_t ～ \mathcal{N}(0,\frac{1}{1-\rho^2})$.Given $X_t$,$X_{t-1}=\frac{X_t-\xi_t}{\rho},Y_t=X_t+\sigma_y\eta_t$,and they are independent.We obtain that the conditional distribution of $X_{t-1},Y_t$ are $\mathcal{N}(\frac{1}{\rho}X_t,\frac{1}{\rho^2}),\mathcal{N}(X_t,\sigma_y^2)$,respectively.Putting them together,$p(X_t|X_{t-1},Y_t) \propto e^{-\frac{(X_{t-1}-\frac{1}{\rho}x_t)^2}{\frac{2}{\rho^2}}-\frac{(Y_t-x_t)^2}{2\sigma_y^2}-\frac{x_t^2}{\frac{2}{1-\rho^2}}}$.The coefficient of $x_t^2$ is $1-\frac{\rho^2}{2}+\frac{1}{2\sigma_y^2}$.The coefficient of $x_t$ is $-\rho X_{t-1}-\frac{Y_t}{\sigma_y^2}$.Therefore, $X_t ～ \mathcal{N}(\frac{\rho X_{t-1}+\frac{Y_t}{\sigma_y^2}}{2-\rho^2+\frac{1}{\sigma_y^2}},\frac{1}{2-\rho^2+\frac{1}{\sigma_y^2}})$
+
+(2)$y_t|X_{t-1} ～ \mathcal{N}(\rho X_{t-1},1+\sigma_y^2)$.We use $p(y_t|X_{t-1})$ to update the weight.
+```{r sequential importance sampling}
+sequential<-function(sigma,plot_graph){
+#初值准备
+N<-1000
+weight<-rep(1/N,N)
+rho<-0.9
+partical<-list()
+for(i in 1:N){
+  new_partical<-list()
+  new_partical$X0<-NA
+  new_partical$Y0<-NA
+  new_partical$X<-rep(NA,100)
+  new_partical$Y<-rep(NA,100)
+  new_partical$weight<-1/N
+  partical[[i]]<-new_partical
+}
+result<-list(X=rep(NA,100),Y=rep(NA,100),ESS=c(N,rep(NA,100)))
+#获取X0和Y0
+for(i in 1:1000){
+  partical[[i]]$X0<-rnorm(1,mean=0,sd=sqrt(1/(1-rho^2)))
+  partical[[i]]$Y0<-rnorm(1,mean=0,sd=sigma/sqrt(1-rho^2))
+}
+random<-sample(1:1000,1)
+result$X0<-partical[[random]]$X0
+result$Y0<-partical[[random]]$Y0
+#进行100次抽样
+for(t in 1:100){
+  #更新每个粒子的当前状态
+  for(i in 1:N){
+    if(t==1){
+      partical[[i]]$Y[t]<-rnorm(1,mean=rho*partical[[i]]$X0,sd=sqrt(1+sigma^2))
+      partical[[i]]$X[t]<-rnorm(1,mean=(rho*partical[[i]]$X0+partical[[i]]$Y[t]/sigma^2)/(2-rho^2+1/sigma^2),sd=sqrt(1/(2-rho^2+sigma^2)))
+    }
+    else{
+      partical[[i]]$Y[t]<-rnorm(1,mean=rho*partical[[i]]$X[t-1],sd=sqrt(1+sigma^2))
+      partical[[i]]$X[t]<-rnorm(1,mean=(rho*partical[[i]]$X[t-1]+partical[[i]]$Y[t]/sigma^2)/(2-rho^2+1/sigma^2),sd=sqrt(1/(2-rho^2+sigma^2)))
+    }
+  }
+  #更新每个粒子的当前权重
+  for(i in 1:N){
+    if(t==1){
+      partical[[i]]$weight<-partical[[i]]$weight*dnorm(partical[[i]]$Y[t],mean=rho*partical[[i]]$X0,sd=sqrt(1+sigma^2))
+    }
+    else{
+      partical[[i]]$weight<-partical[[i]]$weight*dnorm(partical[[i]]$Y[t],mean=rho*partical[[i]]$X[t-1],sd=sqrt(1+sigma^2))
+    }
+  }
+  #对权重进行归一化处理
+  currentweight<-sapply(partical,function(x) x$weight)  
+  currentweight<-currentweight/sum(currentweight) 
+  for(i in 1:N) {
+    partical[[i]]$weight<-currentweight[i]
+  }
+  #如果ESS过小需要再次更新权重
+  ESS<-(sum(currentweight))^2/(sum(currentweight^2))
+  result$ESS[t+1]<-ESS
+  if(ESS<500){
+    for(i in 1:N){
+      partical[[i]]$weight<-1/N
+    }
+  }
+  #按更新后的权重抽样
+  currentweight<-numeric(N)
+  for(i in 1:N){
+    currentweight[i]<-partical[[i]]$weight
+  }
+  random<-sample(1:1000,1,prob=currentweight)
+  result$X[t]<-partical[[random]]$X[t]
+  result$Y[t]<-partical[[random]]$Y[t]
+}
+if(plot_graph){
+#画出频率分布直方图
+X<-result$X
+ESS<-result$ESS
+library(ggplot2)
+histogram_X<-ggplot(data=NULL, aes(x=X))+
+  geom_histogram(binwidth=1,fill="skyblue",color="black",alpha=0.7)+  
+  labs(title="Histogram of X",x="X",y="Frequency")+
+  theme_minimal()
+print(histogram_X)
+#画出ESS随t变化的折线图
+t<-seq(0,100,by=1)
+ESS<-result$ESS
+plot(t,ESS,type="l",col="purple")
+}
+return(result)
+}
+sequential(0.2,TRUE)
+```
+We can also use the naive distribution.We have $y_t|X_{t-1} ～ \mathcal{N}(\rho X_{t-1},1+\sigma_y^2)$ and $X_t|X_{t-1} ～ \mathcal{N}(\rho X_{t-1},1)$.We run the above code chunk again,but this time update $X_t$ using naive distribution:
+``` {r sequential importance sampling using naive distribution}
+sequential_naive<-function(sigma,plot_graph){
+#初值准备
+N<-1000
+weight<-rep(1/N,N)
+rho<-0.9
+partical<-list()
+for(i in 1:N){
+  new_partical<-list()
+  new_partical$X0<-NA
+  new_partical$Y0<-NA
+  new_partical$X<-rep(NA,100)
+  new_partical$Y<-rep(NA,100)
+  new_partical$weight<-1/N
+  partical[[i]]<-new_partical
+}
+result<-list(X=rep(NA,100),Y=rep(NA,100),ESS=c(N,rep(NA,100)))
+#获取X0和Y0
+for(i in 1:1000){
+  partical[[i]]$X0<-rnorm(1,mean=0,sd=sqrt(1/(1-rho^2)))
+  partical[[i]]$Y0<-rnorm(1,mean=0,sd=sigma/sqrt(1-rho^2))
+}
+random<-sample(1:1000,1)
+result$X0<-partical[[random]]$X0
+result$Y0<-partical[[random]]$Y0
+#进行100次抽样
+for(t in 1:100){
+  #更新每个粒子的当前状态
+  for(i in 1:N){
+    if(t==1){
+      partical[[i]]$Y[t]<-rnorm(1,mean=rho*partical[[i]]$X0,sd=sqrt(1+sigma^2))
+      partical[[i]]$X[t]<-rnorm(1,mean=rho*partical[[i]]$X0,sd=1)
+    }
+    else{
+      partical[[i]]$Y[t]<-rnorm(1,mean=rho*partical[[i]]$X[t-1],sd=sqrt(1+sigma^2))
+      partical[[i]]$X[t]<-rnorm(1,mean=rho*partical[[i]]$X[t-1],sd=1)
+    }
+  }
+  #更新每个粒子的当前权重
+  for(i in 1:N){
+    if(t==1){
+      partical[[i]]$weight<-partical[[i]]$weight*dnorm(partical[[i]]$Y[t],mean=rho*partical[[i]]$X0,sd=sqrt(1+sigma^2))
+    }
+    else{
+      partical[[i]]$weight<-partical[[i]]$weight*dnorm(partical[[i]]$Y[t],mean=rho*partical[[i]]$X[t-1],sd=sqrt(1+sigma^2))
+    }
+  }
+  #对权重进行归一化处理
+  currentweight<-sapply(partical,function(x) x$weight)  
+  currentweight<-currentweight/sum(currentweight) 
+  for(i in 1:N) {
+    partical[[i]]$weight<-currentweight[i]
+  }
+  #如果ESS过小需要再次更新权重
+  ESS<-(sum(currentweight))^2/(sum(currentweight^2))
+  result$ESS[t+1]<-ESS
+  if(ESS<500){
+    for(i in 1:N){
+      partical[[i]]$weight<-1/N
+    }
+  }
+  #按更新后的权重抽样
+  currentweight<-numeric(N)
+  for(i in 1:N){
+    currentweight[i]<-partical[[i]]$weight
+  }
+  random<-sample(1:1000,1,prob=currentweight)
+  result$X[t]<-partical[[random]]$X[t]
+  result$Y[t]<-partical[[random]]$Y[t]
+}
+#画出频率分布直方图
+if(plot_graph){
+X<-result$X
+ESS<-result$ESS
+library(ggplot2)
+histogram_X<-ggplot(data=NULL, aes(x=X))+
+  geom_histogram(binwidth=1,fill="skyblue",color="black",alpha=0.7)+  
+  labs(title="Histogram of X",x="X",y="Frequency")+
+  theme_minimal()
+print(histogram_X)
+#画出ESS随t变化的折线图
+t<-seq(0,100,by=1)
+ESS<-result$ESS
+plot(t,ESS,type="l",col="purple")
+}
+return(result)
+}
+sequential_naive(0.2,TRUE)
+```
+
+(3)
+We need to calculate $E[X_t|Y_{\leq t}-E(X_t|Y_{\leq t})]^2$. Since $E(X_t|Y_{\leq t})=Y_t$,we can estimate it by calculating $\frac{1}{N} \sum_{i=1}^{N} [(X_t|Y_{\leq t})^{(i)}-Y_t^{(i)}]^2$.
+```{r repeat the experiment}
+repeatexperiment<-function(N,sigma){
+error<-rep(NA,101)
+result_matrix<-matrix(NA,nrow=N,ncol=202)
+for(i in 1:N){
+  tmp<-sequential(sigma,FALSE)
+  result_matrix[i,1]<-tmp$X0
+  result_matrix[i,102]<-tmp$Y0
+  result_matrix[i,2:101]<-tmp$X
+  result_matrix[i,103:202]<-tmp$Y
+}
+for(t in 1:101){
+  error[t]<-sum((result_matrix[,t]-result_matrix[,t+101])^2)/N
+}
+t<-seq(0,100,by=1)
+plot(t,error,type="l",ylim=c(0,2),col="green")
+print(c(mean(error),var(error)))
+return(error)
+}
+```
+(4) 
+The only thing we need to do is change the parameter sigma for the function,from 0.2 to 0.8.Firstly,we run:
+```{r bigger sigma}
+sequential(0.8,TRUE)
+sequential_naive(0.8,TRUE)
+repeatexperiment(100,0.2)
+repeatexperiment(100,0.8)
+```
+It seems that the mean of the square error of the estimate becomes slightly smaller as $\sigma_y$ increases,but the variance of the square error of the estimate becomes much bigger.
